@@ -2803,25 +2803,36 @@
       3. 定义在任何函数之外的变量
    2. 栈内存：用来保存
       1. 定义在函数内的非static对象
+   
 2. 分配在前面2中内存中的对象由编译器自动创建和销毁。
    1. 栈对象，在其定义的程序快运行的时候存在
    2. static对象，在使用之前分配，程序结束时销毁
+   
 3. 除了上面2中，还有一种叫做**自由空间**或者说**堆**。用来储存动态分配的对象，也就是在程序运行时分配的对象。
+
 4. 堆中对象的生存期由程序自己控制，也就是说，当动态对象不再使用时，要用代码显式地销毁它们
+
 5. 动态内存的管理是由一对运算符完成的
    1. new：在动态内存中为对象分配空间，并返回一个指向该对象的指针
    2. delete：接受一个动态对象的指针，销毁该对象，并且释放与之关联的内存
+   
 6. 为了更容易地使用动态内存，新的标准库提供了2中智能指针来管理动态对象
+
 7. 这2种智能指针与普通指针的区别在于它们会自动释放所指向的对象。
+
 8. 这2中智能指针互相之间的区别在于管理底层指针的方法
    1. `shared_ptr`允许多个指针指向同一个对象
    2. `unique_ptr`独占所指向的对象
+   
 9. 除了这两种智能指针，标准库还定义了一种叫做`weak_ptr`的伴随类，它是一种弱引用，指向`shared_ptr`所管理的对象，这三中类型都定义在头文件`memory`中
+
 10. `share_ptr`类
     1. 它也是模板，因此要额外提供信息，也就是指针可以指向的类型
     2. `shared_ptr<list<int>> pt2;`
     3. 默认初始化的智能指针中保存着一个空指针
+    
 11. 智能指针的操作和普通指针非常像，也可以使用解引用之类的操作
+
 12. 两种智能指针都支持的操作
     1. `shared_ptr<T> sp`：空智能指针，可以指向类型为T的对象
     2. `unique_ptr<T> up`
@@ -2831,6 +2842,7 @@
     6. `p.get()`：返回p中保存的指针，要小心使用，因为当指针指针释放对象后，这个指针会变成未定义
     7. `swap(p, q)`：交换p和q中的指针
     8. `p.swap(q)`
+    
 13. `shared_ptr`独有的操作
     1. `make_shared<T>(args)`：返回一个shared_ptr，指向一个动态分配的类型为T的对象，使用args来初始化此对象
        1. 这是最安全的分配和使用动态内存的方法
@@ -2846,15 +2858,21 @@
     7. 每个shared_ptr都有引用计数，当它被拷贝的时候，比如用来初始化其他shared_ptr，作为参数传递给一个函数，或者作为函数的返回值，引用计数都会加1.当它被赋予一个新值或者是shared_ptr被销毁，计数器会递减
     8. 一旦一个shared_ptr的引用计数器变为0，它就会自动释放自己所管理的对象
     9. 当指向一个对象的最后一个shared_ptr被销毁时，shared_ptr类会自动销毁此对象。他是通过一个特殊的成员函数，析构函数来完成销毁工作的。
+    
 14. 析构函数一般用来释放对象所分配的资源
+
 15. 因为在最后一个shared_ptr销毁前内存都不会被释放，所以保证shared_ptr在无用之后不再保留就非常重要。
+
 16. 使用动态内存的情景
     1. 程序不知道自己要使用多少对象
        1. 容器类就是因为这个原因才使用的动态内存，所以大小也就可变
     2. 程序不知道所需对象的准确类型
     3. 程序需要在多个对象间共享数据
+    
 17. 定义StrBlob类
+    
     1. 实现一个新的集合类型的最简单的方法是使用某个标准容器来管理元素，采用这种方法，我们可以借助标准库类型来管理元素所使用的内存空间
+    
 18. 直接管理内存
     1. 定义了2个运算符来分配和释放内存
        1. `new`
@@ -2885,18 +2903,365 @@
        1. 忘记delete内存，会造成内存泄露，这种问题直到内存耗尽才会被发现
        2. 使用已经被释放的对象
        3. 同一块内存释放多次
+    
 19. share_ptr和new结合使用
     1. 我们不能进行内置指针到智能指针的隐式转换，所以我们不能通过赋值来初始化只能指针，而是只能通过直接初始化
        1. `shared_ptr<int> p1 = new int(1024);`错误
        2. `shared_ptr<int> p2(new int(1024));`正确
     2. 同样的，1中所说的在设定函数返回值时也要小心，如果设定函数返回智能指针，在写返回语句时就不能写返回内置指针
     3. 定义和改变shared_ptr的方法
-       1. `shared_ptr<T> p(q)`
-       2. `shared_ptr<T> p(u)`
+       1. `shared_ptr<T> p(q)`q是内置指针
+       2. `shared_ptr<T> p(u)`u是unique_ptr，赋值后会将u置为空
+       3. `shared_ptr<T> p(q, d)`
+          1. q是内置指针
+          2. d是可调用对象
+          3. 这样初始化之后，p将使用d来代替delete
+       4. `shared_ptr<T> p(p2, d)`
+          1. p2是shared_ptr
+       5. `p.reset()`
+          1. 这3中都一样
+          2. 
+       6. `p.reset(q)`
+       7. `p.reset(q, d)`
+    
+20. 不要混合使用智能指针和内置指针
+
+    1. 推荐使用`make_shared`而不是new，这样我们就能在分配对象的同时就将shared_ptr与之绑定，从而避免了将同一块内存绑定到多个独立创建的`shared_ptr`上
+
+    2. 如果在函数的参数传递中混合使用内置指针和智能指针，可能会有意外发生：
+
+       ```c++
+       void process(shared_ptr<int> ptr){}
+       
+       int *x(new int(1024));
+       
+       process(x);
+       process(shared_ptr<int>(x));
+       int j = *x; 
+       ```
+
+       1. 可以看到，将x直接传入process函数是错误的，因为编译器无法隐式地将内置指针转变成智能指针
+       2. 第二个函数调用是对的，但是会造成一个错误：因为智能指针在函数返回后，引用计数会变成0，所以其指向的那块内存会被释放掉，所以x会变成一个空悬指针
+
+    3. 从2中我们知道，当将一个`shared_ptr`绑定到普通指针的时候，我们就将内存管理的责任全部给智能指针了，也就是说我们之后再使用内置指针来访问这块内存时，都会有使用空悬指针的风险，所以不要混用这两种指针
+
+21. 不要使用get来初始化另一个智能指针或者为智能指针赋值
+
+    1. 智能指针定义了一个名为get的函数，可以返回智能指针内部绑定的内置指针
+    2. get函数主要是为了这种情况设计的：我们需要向不能使用智能指针的代码传递一个内置指针
+    3. 使用get返回的指针的代码不能delete此指针
+    4. 虽然没有错误信息提示，但是将另一个智能指针也绑定到get返回的指针上是错误的
+    5. get将指针的访问权限传递给代码，只有在保证代码不会delete指针的时候才能使用
+
+22. 其他`shared_ptr`操作
+
+    1. `reset`方法是用来给智能指针绑定另外一个内置指针的时候用的
+
+       1. 需要的话，会释放原来指向的内存
+
+       2. 通常与`unique`一起使用，来控制多个`shared_ptr`共享的对象：在改变底层对象之前，我们检查自己是否是当前对象仅有的用户，如果不是，在改变之前要制作一份新的拷贝
+
+          ```c++
+          if (!p.unique())
+          	p.reset(new string(*p));
+          *p += newVal;
+          ```
+
+23. 智能指针和异常
+
+    1. 智能指针能够在函数发生异常提早结束时，仍然能释放内存
+    2. 如果使用的是内置指针，因为指针这个局部变量会在函数结束后被销毁，它指向的内存就没办法释放了，也就造成了内存泄漏
+
+24. 智能指针和哑类
+
+    1. 包括标准库在内的很多C++类都定义了析构函数，用来清理对象使用的资源
+
+    2. 但是有些类没有这样好的定义，特别是为C和C++两种语言设计的类，通常要求用户显式地释放所使用的任何资源
+
+    3. 这里使用一个网络库中的对象`connection`来作为例子：
+
+       ```c++
+       struct destination;
+       struct connection;
+       
+       connection connect(destination*);
+       void disconnect(connection);
+       void f(destination &d, ...){
+           connection c = connect(&d);
+           
+       }
+       ```
+
+       这里我们可以看到，因为connection没有析构函数，所以在函数结束后，没办法自动关闭连接（也就是调用上面定义的disconnect函数），我们可以使用shared_ptr来保证它被正确关闭：
+
+       ```c++
+       void end_connection(connection *p){
+           disconnect(*p);
+       }
+       
+       void f(destination &d, ...){
+           connection c = connect(&d);
+           shared_ptr<connection> p(&c, end_connection);
+       }
+       ```
+
+       这里也是终于使用了智能指针初始化的第二个参数，是个可调用对象，用来取代delete，作为其析构函数，称为删除器
+
+25. `unique_ptr`
+
+    1. 与`shared_ptr`不同，在给定的某个时刻，只能有一个`unique_ptr`指向一个给定对象
+
+    2. unique_ptr没有像make_shared这类函数，只能传入内置指针来初始化
+
+    3. 由于unique_ptr‘拥有’它所指向的对象，所以它不支持普通的拷贝和赋值操作
+
+       1. 例外1：可以将nullptr赋值给unique_ptr，从而让其释放所指向的对象
+       2. 例外2：可以拷贝或赋值一个将要被销毁的unique_ptr，一个常见例子就是函数返回
+
+    4. 可以调用release和reset来将指针的所有权从一个对象转移到另外一个
+
+       ```c++
+       unique_ptr<string> p2(p1.release());
+       unique_ptr<string> p3(new string("Trex"));
+       
+       p2.reset(p3.release());
+       ```
+
+    5. 传递unique_ptr参数和返回unique_ptr
+
+       1. 下面的代码是合法的，因为这是3中提到的例外2
+
+          ```c++
+          unique_ptr<int> clone(int p){
+              return unique_ptr<int>(new int(p));
+          }
+          
+          unique_ptr<int> clone(int p){
+              unique_ptr<int> ret(new int(p));
+              
+              return ret;
+          }
+          ```
+
+    6. 向unique_ptr传入删除器
+
+       1. unique_ptr和shared_ptr一样，都可以在初始化来设定新的删除器，但是unique_ptr在初始化传入时，要规定删除器类型：`unique_ptr<objT, delT> p(new objT, fcn);`
+       2. uniqe_ptr不能使用reset来设定新的删除器，这个和shared_ptr是不一样的
+
+    7. weak_ptr
+
+       1. 这是一种不控制所指向对象生存期的智能指针
+
+       2. 它指向由shared_ptr管理的对象，但是它不会改变shared_ptr的引用计数
+
+       3. 我们需要使用shared_ptr来初始化weak_ptr：`weak_ptr<int> wp(make_shared<int>(42));`
+
+       4. 它与内置指针的不同在于：
+
+          1. 初始化：内置指针自己初始化，且可以用来初始化shared_ptr，而weak_ptr用shared_ptr来初始化
+
+          2. 访问对象：内置指针直接解引用来访问，可能因为指向的对象被清除而造成错误。weak_ptr使用lock，返回一个指向共享对象的shared_ptr，会将指向对象的引用+1，可以使用if来判断其指向的对象有没有被清除：比内置指针安全很多
+
+             ```c++
+             if (shared_ptr<int> np = wp.lock()){
+                 ...
+             }
+             ```
+
+       5. weak_ptr可以用作伴随指针，也就是组织用户访问一个已经不存在的对象
+
+    8. 指针操作
+
+
+
+
+
+
 
 ##### 动态数组
 
+1. C++提供了一种语句，可以让我们一次性分配多个对象
+
+2. 标准库中包含一种名为`allocator`的类，允许我们将分配和初始化分离
+
+3. 使用allocator通常会有更好的性能和更灵活的内存管理能力
+
+4. 不应使用动态分配的数组，而是应该使用标准库容器，因为使用容器的类可以使用默认版本的拷贝，赋值和析构操作。分配动态数组的类必须定义自己版本的操作，在拷贝，赋值以及销毁对象时管理所关联的内存，很麻烦，而且很容易出错
+
+5. 使用new和方括号，方括号内的必须是整型，但是不一定要常量：`int *pia = new int[get_size()];`
+
+6. 可以使用别名：`typedef int arrT[42]; int *p = new arrT;`
+
+7. 分配一个动态数组会得到一个元素类型的指针，而不是数组类型的啥
+
+8. 因为分配的内存不是一个数组类型，所以不能使用begin或者end等迭代器的函数，也不能使用for来遍历数组中的元素
+
+9. 初始化动态分配对象的数组
+
+   1. 既可以默认初始化，也可以值初始化
+
+      ```c++
+      int *pia = new int[10];
+      int *pia2 =  new int[10]();
+      string *psa = new string[10];
+      string *psa2 = new string[10]();
+      ```
+
+   2. 新标准中还可以提供元素初始化器
+
+   `string *pia3 = new int[10]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};`
+
+   与内置数组一样，可以部分值初始化，剩下的会默认值初始化
+
+10. 与内置数组不同的一点：可以动态分配一个空数组
+
+11. 释放动态数组
+
+    1. 因为动态数组是一个元素指针，所以不能简单地用`delete p;`，而是应该用`delete [] pa;`，也就是前面加个方括号
+
+12. 智能指针和动态数组
+
+    1. 标准库提供了可以管理动态数组的unique_ptr版本：`unique_ptr<int[]> up(new int[10]);`
+
+    2. 当unique_ptr指向一个动态数组时：
+
+       1. 不能使用点和箭头成员运算符
+       2. 可以使用下标运算符来访问数组中的元素
+
+    3. shared_ptr不直接支持管理动态数组，如果希望使用，要自己提供删除器
+
+       `shared_ptr<int> sp(new int[10], [](int *p){delete[] p;});`
+
+    4. 如果不传入自定义的删除器，会使用默认的delete，这样就会带来未知错误
+
+    5. shared_ptr不能使用下标来访问元素
+
+    6. 为了访问数组中的元素，要使用get来获取内置指针，然后用它来访问数组
+
+13. 为什么需要allocator类
+
+    1. new有一些灵活性上的缺陷，因为它把内存分配和对象构造放在了一起，delete也是这样。但是，分配一大块内存时，我们通常计划在这块内存上按需构造对象。也就是先把内存占着，然后在真正需要时才真正执行对象创建操作
+
+14. allocator类
+
+    1. 定义在头文件`memory`中
+
+    2. 提供了一种类型感知的内存分配方法，它分配的内存是原始的，未构造的
+
+    3. 是一个模板，为了定义allocator对象，我们必须指明这个对象可以分配的对象类型。
+
+    4. 当一个allocator对象分配内存时，它会根据给定的对象类型来确定恰当的内存大小和对齐位置：
+
+       ```c++
+       allocator<string> alloc;
+       auto const p = alloc.allocate(n); //分配n个未初始化的string
+       ```
+
+    5. 支持的操作
+
+       1. `allocator<T> a`
+       2. `a.allocate(n)`分配一段原始未构造的内存，保存n个类型为T的对象
+       3. `a.deallocate(p, n)`释放从p开始的内存，这块内存保存了n个类型为T的对象。
+          1. p必须是一个先前由allocate返回的指针
+          2. n必须是p创建时要求的大小
+          3. 在调用这个方法之前，必须对每个在这块内存中创造的对象调用destroy
+       4. `a.construct(p, args)`
+          1. args被传递给类型为T的构造函数，用来在p指向的内存中构造一个对象
+       5. `a.destroy(p)`对p所指向的对象执行析构函数
+
+    6. allocator分配未构造的内存
+
+       1. allocateor分配的内存是未构造的
+       2. 我们只能对真正构造了的元素进行destroy操作
+       3. 标准库还定义了2种伴随算法，定义在头文件memory中
+          1. `uninitialized_copy(b, e, b2)`
+             1. b和e,b2都是迭代器
+             2. 将b,e之间的拷贝到从b2开始
+          2. `uninitialized_copy_n(b, n, b2)`
+          3. `uninitialized_fill(b, e, t)`
+             1. 在b和e之间用t填充
+          4. `uninitialized_fill_n(b, n, t)`
+
 ##### 使用标准库：文本查询程序
+
+```c++
+void runQueries(ifstream &infile){
+    TextQuery tq(infile);
+    
+    while(true){
+        cout << "enter word to look for, or q to quit: ";
+        string s;
+        if (!(cin >> s) || s == "q")
+            break;
+        print(cout, tq.query(s)) << endl;
+    }
+}
+
+class QueryResult;
+class TextQuery{
+public:
+    using line_no = std::vector<std::string>::size_type;
+    TextQuery(std::ifstream&);
+    QueryResult query(const std::string&) const;
+    
+private:
+    std::shared_ptr<std::vector<std::string>> file;
+    std::map<std::string, std::shared_ptr<std::set<line_no>>> wm;
+};
+
+TextQuery::TextQuery(ifstream &is):file(new vector<string>){
+    string text;
+    while (getilne(is, text)){
+        file->push_back(text);
+        int n = file->size() - 1;
+        istringstream line(text);
+        string word;
+        while (line >> word){
+            auto &lines = wm[word];
+            if (!lines)
+                lines.reset(new set<line_no>);
+            lines->insert(n);
+        }
+    }
+}
+
+class QueryResult{
+friend std::ostream& print(std::ostream&, const QueryResult&);
+    
+public:
+    QueryResult(std::string s,
+               std::shared_ptr<std::set<line_no>> p,
+               std::shared_ptr<std::vector<std::string>> f):
+    	sought(s), lines(p), file(f) {}
+    
+private:
+    std::string sought;
+    std::shared_ptr<std::set<line_no>> lines;
+    std::shared_ptr<std::vector<std::string>> file;
+};
+
+QueryResult TextQuery::query(const string &sought) const{
+    static shared_ptr<set<line_no>> nodata(new set<line_no>);
+    auto loc = wm.find(sought);
+    if (loc == wm.end()
+       return QureyResult(sought, nodata, file);
+    else
+        return QueryResult(sought, loc->second, file);
+}
+        
+ostream &print(ostream &os, const QueryResult &qr){
+    os << qr.sought << " occurs " << qr.lines->size() << " "
+        << make_plural(qr.lines->size(), "time", "s") << endl;
+    
+    for (auto num : *qr.lines)
+        os << "\t(line " << num + 1 << ") "
+        	<< *(qr.file->begin() + num) << endl;
+    
+    return os;
+}
+```
+
+
 
 
 
@@ -2906,19 +3271,104 @@
 
 #### 拷贝控制
 
+##### 拷贝，赋值与销毁
+
+1. 当定义一个类的时候，我们要显式地或者隐式地指定在此类型的对象拷贝，移动，赋值和销毁时做什么，我们可以通过定义5中特殊的成员函数来控制这些操作
+   1. 拷贝构造函数
+   2. 拷贝赋值函数
+   3. 移动构造函数
+   4. 移动赋值运算符
+   5. 析构函数
+2. 如果没有定义上面的函数，编译器会自动为他定义缺失的操作，但是这通常不是我们想要的，所以通常要定义这些行为
+3. 拷贝构造函数
+   1. 如果满足这些条件，这个构造函数就是拷贝构造函数
+      1. 第一个参数是自身类类型的引用
+      2. 任何额外参数都有默认值
+   2. 拷贝构造函数的第一个参数必须是一个引用类型
+   3. 每个成员类型决定了它如何拷贝：对类类型的成员，会使用其拷贝构造函数来拷贝
+   4. 例子：
+   5. 直接初始化与拷贝初始化
+      1. 直接初始化是编译器根据传入的参数来选择相应的构造函数来初始化对象
+      2. 拷贝初始化是编译器将右边的数据拷贝进正在创建的对象中
+      3. 拷贝初始化使用拷贝构造函数来完成
+      4. 如果一个类有一个移动构造函数，则拷贝初始化有时会使用移动构造函数而非拷贝构造函数来完成
+      5. 拷贝初始化在下面的其他情况也会出现：
+         1. 将一个对象作为实参传递给一个非引用类型的形参
+         2. 从一个返回类型为非引用类型的函数返回一个对象
+         3. 用花括号列表初始化一个数组中的元素或一个聚合类的成员
+      6. 
+4. 拷贝赋值运算符
+   1. 
+
+##### 拷贝控制和资源管理
+
+##### 交换操作
+
+##### 拷贝控制示例
+
+##### 动态内存管理类
+
+##### 对象移动
+
 
 
 #### 重载运算与类型转换
+
+##### 基本概念
+
+##### 输入和输出运算符
+
+##### 算术和关系运算符
+
+##### 赋值运算符
+
+##### 下标运算符
+
+##### 递增和递减运算符
+
+##### 成员访问运算符
+
+##### 函数调用运算符
+
+##### 重载，类型转换与运算符
+
+
 
 
 
 #### 面向对象程序设计
 
+##### OOP：概述
+
+##### 定义基类和派生类
+
+##### 虚函数
+
+##### 抽象基类
+
+##### 访问控制与继承
+
+##### 继承中的类作用域
+
+##### 构造函数与拷贝控制
+
+##### 容器与继承
+
+##### 文本查询程序再探
+
 
 
 #### 模板与泛型编程
 
+##### 定义模板
 
+##### 模板实参推断
+
+##### 重载与模板
+
+##### 可变参数模板
+
+##### 模板特例化
 
 
 
