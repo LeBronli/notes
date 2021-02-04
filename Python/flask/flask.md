@@ -114,6 +114,7 @@
    3. 在视图文件中定义上下文处理器
    4. 上下文可以看成一个字典，可以添加或者移除值，通过`@product_blueprint.context_processor`修饰的任意方法均返回一个字典
 5. 创建自定义的Jinjia2过滤器
+   
    1. 
 
 
@@ -174,8 +175,11 @@ def hello_world():
 ```
 
 1. 首先需要导入`Flask`类，这个类的实例会成为我们的WSGI应用
+
 2. 然后创建一个实例，也就是`app`对象。要传入参数，这个参数的意义是告诉Flask在哪里可以找到模板和静态资源之类的东西
+
 3. 修饰器`@app.route('/')`用来告诉Flask触发函数的URL
+
 4. 函数要最后返回浏览器中显示的信息
 
 1. 不要使用`flask.py`这个名字，会有冲突
@@ -192,7 +196,7 @@ def hello_world():
       python -m flask run
       ```
 
-3. 如果要打开所有的开发功能（包括调试模式），那么要在运行服务器之前设置FLASK_ENV环境变量
+7. 如果要打开所有的开发功能（包括调试模式），那么要在运行服务器之前设置FLASK_ENV环境变量
 
    ```bash
    export FLASK_ENV=development
@@ -623,7 +627,7 @@ def hello_world():
       ```
 
       		1. `app.teardown_appcontext()`告诉Flask在返回响应进行清理的时候调用这个函数，有点像pytorch里面的那些
-        		2. `app.cli.add_command()`添加一个新的可以与flask一起工作的命令
+      		2. `app.cli.add_command()`添加一个新的可以与flask一起工作的命令
 
       1. 然后在工厂函数中使用这个注册函数
 
@@ -793,6 +797,211 @@ def hello_world():
    
 
    ##### 模板
+
+   1. 模板会保存在`flaskr/templates`文件夹中
+
+   2. 模板是包含静态数据和动态数据占位符的文件，Flask使用`Jinjia`模板库来渲染模板
+
+   3. `Jinjia2`被配置为自动转移HTML模板中的任何数据，即用户的输入是安全的，因为任何可能产生歧义的输入都会被转义
+
+   4. Jinjia语句与模板中的静态数据通过特定的分界符分隔
+
+      1. 任何位于`{{和}}`的东西是一个会输出到最终文档的静态式
+      2. `{%和%}`之间的东西表示控制流程语句，比如`if`和`for`
+      3. 代码块使用分解符分隔，而不是使用缩进分隔
+
+   5. 基础布局：
+
+      1. 虽然每个页面的主题不同，但是基本布局是相同的。每个模板都会扩展同一个基础模板并重载相应的小节，而不是重写整个HTML结构
+      2. `g`这个对象是可以在模板中使用的
+      3. `url_for()`函数也是可用的
+
+   6. 定义了3个块，这些块会被其他模板重载
+
+      1. `{% block title %} {% endblock %}`会改变显式在浏览器标签和窗口中的标题
+      2. `{% block header %}{% endblock %}`类似于`title`，但是会改变页面的标题
+      3. `{% block content %} {% endblock %}`是每个页面的具体内容
+
+   7. 注册模板
+
+      1. 示例代码
+
+      ```html
+      {% extends 'base.html' %}
+      
+      {% block header %}
+       <h1>{% block title %}Register{% endblock %}</h1>
+      {% endblock %}
+      
+      {% block content %}
+        <form method="post">
+          <label for="username">Username</label>
+          <input name="username" id="username" required>
+          <label for="password">Password</label>
+          <input type="password" name="password" id="password" required>
+          <input type="submit" value="Register">
+        </form>
+      <% endblock %}
+      ```
+
+      1. 第一行的表示继承`base.html`模板
+      2. 一种实用的模式是将`{% block title}`放在`{% block header %}`内部，这样可以同时设置`title`和`header`块的内容
+      3. `required`属性是告诉浏览器这些字段是必须的
+
+   8. 登录
+
+   
+
+   
+
+   ##### 静态文件
+
+   1. 可能是：
+      1. CSS文件
+      2. Js文件
+      3. 图片
+   2. 放在`static`文件夹中
+
+   
+
+   ##### 博客蓝图
+
+   1. 定义蓝图
+
+   ```python
+   from flask import (
+   	Blueprint, flash, g, redirect, render_template, request, url_for
+   )
+   from werkzeug.exceptions import abort
+   
+   from flaskr.auth import login_required
+   from flaskr.db import get_db
+   
+   bp = Blueprint('blog', __name__)
+   ```
+
+   2. 注册到应用工厂
+
+   ```python
+   def create_app():
+       app = ...
+       ...
+       
+       from . import blog
+       app.register_blueprint(blog.bp)
+       app.add_url_rule('/', endpoint='index')
+       
+       return app
+   ```
+
+   3. 索引
+
+      1. 视图
+
+         ```python
+         @bp.route('/')
+         def index():
+             db = get_db()
+             posts = db.execute(
+                 'SELECT p.id, title, body, created, author_id, username'
+                 ' FROM post p JOIN user u ON p.author_id = u.id'
+                 ' ORDER BY created DESC'
+             ).fetchall()
+             return render_template('blog/index.html', posts=posts)
+         ```
+
+      2. 模板
+
+         ```jinja2
+         {% extends 'base.html' %}
+         
+         {% block header %}
+           <h1>{% block title %}Posts{% endblock %}</h1>
+           {% if g.user %}
+             <a class="action" href="{{ url_for('blog.create') }}">New</a>
+           {% endif %}
+         {% endblock %}
+         
+         {% block content %}
+           {% for post in posts %}
+             <article class="post">
+               <header>
+                 <div>
+                   <h1>{{ post['title'] }}</h1>
+                   <div class="about">by {{ post['username'] }} on {{ post['created'].strftime('%Y-%m-%d') }}</div>
+                 </div>
+                 {% if g.user['id'] == post['author_id'] %}
+                   <a class="action" href="{{ url_for('blog.update', id=post['id']) }}">Edit</a>
+                 {% endif %}
+               </header>
+               <p class="body">{{ post['body'] }}</p>
+             </article>
+             {% if not loop.last %}
+               <hr>
+             {% endif %}
+           {% endfor %}
+         {% endblock %}
+         ```
+
+         	1. 可以使for
+
+   4. 更新
+
+   
+
+   ##### 项目可安装化
+
+   1. 项目可安装化指的是创建一个项目发行文件，这样项目就可以安装到其他环境
+
+   2. 可安装化可以带来如下好处：
+
+      1. 可安装化后，可以从任何地方导入项目并运行
+      2. 可以和其他包一样管理项目的依赖
+      3. 测试工具可以分离测试环境和开发环境
+
+   3. 描述项目
+
+      1. 使用`setup.py`文件
+
+      2. 描述项目及其从属文件
+
+      3. 示例
+
+         ```python
+         from setuptools import find_packages, setup
+         
+         setup(
+         	name='flaskr',
+         	version='1.0.0',
+         	packages=find_packages(),
+         	include_package_data=True,
+         	zip_safe=False,
+         	install_requirs=[
+                 'flask'
+             ],
+         )
+         ```
+
+         1. `packages`那一行是告诉Python包所包括的文件夹，`find_packages`函数可以自动找到这些文件，不用一个个写出来
+
+         2. 为了包含静态文件和模板文件所在的文件夹，需要设置`include_package_data`，还需要一个`MANIFEST.in`文件夹来说明这些文件有哪些：
+
+            ```python
+            include flaskr/schema.sql
+            graft flaskr/static
+            graft flaskr/templates
+            global-exclude *.pyc
+            ```
+
+   4. 具体可以看：https://packaging.python.org/tutorials/packaging-projects/
+
+   5. 安装项目
+
+   
+
+   
+
+   ##### 测试覆盖
 
    1. 
 
