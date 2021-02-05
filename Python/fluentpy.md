@@ -47,10 +47,12 @@
 ##### 内置序列综述
 
 1. Container sequences可以包含不同类型的对象：`list, tuple, collections.deque`
+   
    1. 可以装不同类型的对象的原因是：包含的只是对象的reference
 2. Flat sequences包含同一类型的对象：`str, bytes, bytearry, memoryview, array.array`
-   1. 包含的是对象的值而不是ref，所以只能是同一类型
-
+   
+1. 包含的是对象的值而不是ref，所以只能是同一类型
+   
 1. 内置序列中，除了`tuple, str, bytes`外所有的序列都是mutable的
 
 2. 继承图示
@@ -402,13 +404,186 @@
 
 ##### Character Issues
 
+1. 每个character都对应着一个`code point`，由几部分组成
+   1. 以`U+`开头，表示是Unicode
+   2. 后面跟4-6个16进制的数字
+   3. 比如`A=U+20AC`
+2. 实际上的character的bytes数值取决于encoding的方式，也就是将code point变成bytes编码的方式
+   1. 比如说A使用UTF-8编码后，由bytes`\x41`表示，用UTF-16LE编码后，由`\x41\x00`表示
+3. `string`可以直接使用`encode`和`decode`方法来转变编码方式
+4. Python中有2种内置的二进制sequence，分别是
+   1. immutable `bytes`
+   2. mutable `bytearray`
+5. 在`bytes`和`bytearray`中：
+   1. 每个item都是一个0-255的整数，用十六进制来表示，比如：`\xc3`
+   2. 取单独的一个item时，会返回整数，比如`cafe[0] = 99`
+   3. 但是如果取slicing，依然返回原类型，比如`cafe`是bytes，那么`cafe[:1] = b'c'`，也就是切片后仍然是bytes
+   4. 虽然这些二进制的序列都是由整数组成，但是`literal notation`，也就是打印出来反应的，却会把ASCII嵌在里面，只有当无法用ASCII表示出来，才会使用十六进制表示，比如café在encode之后，变成了`b'caf\xc3\xa9'`，但是这只是看起来这样，实际上还是一系列的整数组成的，每个元素是由8个组成，也就是一个byte。
+   5. 这两种类型都支持绝大多数除了`format`和`format_map`之外的string使用的方法
+   6. 这两种二进制序列有一个方法是string没有的，那就是`fromhex`，可以处理一系列十六进制的由空格分开的字符，成为二进制序列：`bytes.fromhex('31 4B CE A9')`会生成相应的二进制序列
+6. 构建二进制序列的其他方法：使用constructors，传入下面的参数
+   1. 字符串和encoding所用的方式
+   2. `iterable`提供0-255的item
+   3. 一个整数，来创造一个二进制序列
+   4. 执行`buffer protocol`的对象
+7. `struct`模块提供了函数来将packed bytes处理为a tuple of fields
+8. 如果经常读写二进制文件，可以学习`mmap`也就是memory-mapped file
+
+##### 理解编码和解码问题
+
+1. 如果在encoding的过程中，有一个不能被编码，就会触发`UnicodeEncodeError`，反过来就是`UnicodeDecodeError`，为了解决这类问题，可以在encode时传入errors`参数，有几种可以传入：
+   1. `'ignore'`
+   2. `'replace'`，遇到无法处理的字符，用`'?'`代替
+   3. `'xmlcharrefreplace'`遇到无法处理的字符，用一个XML entity来代替
+2. decode时也可以传入`errors`参数：
+   1. `'replace'`无法处理的用特殊的问号代替（code point `U+FFFD`）
+3. `UTF-8`是Python3默认的encoding编码
+4. 如果载入一个Python模块，但是其中包含非utf8编码的数据，如果没有提前进行encoding declaration，就会报错`SyntaxError`
+5. 如果发现byte sequence的编码方式
+   1. 一些文件和协议，比如HTTP和XML，在header中会告诉你编码方式
+   2. 可以使用一个包：`chardetect`来识别编码方式
+6. BOM
+   1. 使用UTF-16编码的时候，会发现前面会多加一些bytes，这是用来表示`endian`方式的，会告诉CPU如何工作
+   2. 当是little endian的时候，会从左到右，不然就是从右到左
+   3. 这里感觉有点乱
+
+##### 处理文本文件
+
+1. 处理文本的时候使用`str`，只有在最后输出的时候才将其转换成`bytes`
+
+2. 虽然使用文本文件很简单，但是还是要注意编码问题：
+
+   ```python
+   open('cafe.txt', 'w', encoding='utf_8').write('café')
+   open('cafe.txt').read()
+   ```
+
+   1. 这样得到的和写入的并不一样
+   2. 因为在读的时候没有指定解码方式，在这种情况下，会默认使用操作系统的默认encoding，如果是Windows，就会使用Windows1252，就会导致得到的和输入的不一致，但是如果用MacOS或者Linux，则表现正常
+   3. 为了以防万一，也为了能够跨平台，我们读和写的时候都要显式地指定编码方式
+
+3. 不要用二进制方法打开文本文件，除非你需要分析文本文件的编码方式
+
+4. `eval`可以将字符串变成代码执行
+
+5. 因为编码的默认方式等原因，Windows上面更容易面对编码问题
+
+##### Normalizing Unicode for Saner Comparisons
+
+1. 对于两个字符串，虽然编码看起来不一样，但是它们打印出来是一样的：分别是`'café'和'cafe\u0301'`
+   1. 因为`U+0301`是COMBINING ACUTE ACCENT，把他加在`e`后面，就会变成法语的`é`
+   2. 但是这两个字符是不相等的，因为长度不一样
+   3. 解决方法就是使用**Unicode normalization**。由函数`unicodedata.normalize`来提供
+      1. 第一个参数是下面四个字符串中的一个
+         1. `NFC`
+         2. `NFD`
+         3. `NFKC`
+         4. `NFKD`
+2. `str.casefold()`
+   1. 如果里面的字母全部都是`latin1`字母集中的，和使用`str.lower()`的结果相同，除了2个例外
+      1. 希腊字母`mu`
+      2. sharp s
+3. 去掉变音符号
+   1. 首先将characters分解成基本字符：`norm_txt = unicodedata.normalize('NFD', txt)`
+   2. 筛选出其中的基本字符（去掉连接字符）：`''.join(c for c in norm_txt if not unicodedata.combining(c))`
+
+##### Sorting Unicode Text
+
 1. 
+
+##### Dual-Mode str and bytes API
+
+1. 使用正则表达式时：
+   1. 如果对bytes使用，`\d和\w`只匹配ASCII字母集
+   2. 如果对str使用，`\d和\w`能够匹配数字和字母
 
 
 
 ### 函数
 
 #### First-Class 函数
+
+##### 像看待对象一样看待函数
+
+1. 可以直接将函数名作为参数传入
+2. 也可以直接在函数名后面加括号当成函数使用
+
+##### Higher-Order Functions
+
+1. 一种接受函数作为参数并且返回函数的函数，叫做**higher-order function**
+2. 任何只有一个参数的函数都可以作为参数被传入函数
+3. 一些最经典的高级函数：`map, filter, reduce, apply`，但是`apply`在Python3中被移除了，因为不再必要，可以使用`fn(*args, **keywords)`来代替`apply(fn, args, kwargs)`，其他的函数虽然还在，但是也经常有更好的选择
+4. 随着listcomp和genexp的出现，它们可以以一种更加可读的方式完成map和filter的工作
+5. Python3中，`map`和`filter`返回生成器
+6. `reduce`函数在`functools`模块中，它最常见的使用场景，也就是summation，可以被`sum`内置函数更好地完成
+7. 其他的reducing built-ins：
+   1. `all(iterable)`
+   2. `any(iterable)`
+8. 为了使用高阶函数，很多时候需要创造那种很小的，用完即弃的小函数，这也是匿名函数存在的原因
+9. 匿名函数
+   1. 通过`lambda`关键字创造
+   2. lambda函数中，不能出现：
+      1. 赋值
+      2. 使用其他Python语句，像while, try等等
+   3. 在高阶函数之外，匿名函数的使用场景很有限
+   4. lambda只是一个语法糖，lambda表达式和def一样创造了一个函数对象
+10. 可以通过`callable()`这个内置函数，来判断一个对象是不是callable
+11. Python的文档列出了下面7中callable object
+    1. 用户定义的函数
+    2. 内置函数
+    3. 内置方法
+    4. 用户自己定义的方法
+    5. 类
+    6. 类的实例
+    7. Generator functions，也就是使用yield而不是return来返回的函数，当调用时，会返回生成器对象。比较特殊，后面还可以用作协程
+12. 用户定义的可调用类型
+    1. 任何对象，只要定义了`__call__`特殊方法，也可以和函数一样被调用
+    2. 一种这种的应用是装饰器。
+    3. 有一种与创造函数完全不同的就是使用`closure`
+13. 函数 introspection
+    1. 和普通的用户定义的类一样，函数也使用`__dict__`属性来存储用户赋予它的属性
+    2. 找到两个对象属性的区别，最好的就是使用`set(dir(obj1)) - set(dir(obj2))`
+    3. 函数还有几个重要的特殊方法可以被IDE和框架利用，来获得函数签名的信息：
+       1. `__defaults__`
+       2. `__code__`
+       3. `__annotations__`
+14. 函数的参数：从位置参数到keyword-only参数
+    1. 有一个非常好用的点在于：可以用*和**来拆开iterables和mappings
+    2. keyword-only 参数是一个Python3中的新特性。为了定义它，我们把它放在*和**之间，这样就没办法用positoinal参数了，因为如果没有指定关键词，会被前面的\*给抢走
+    3. keyword-only参数没有必要一定要有默认值
+15. 装饰器可以通过方法了解到被装饰的函数所需要的参数
+    1. 函数的`__defaults__`属性是一个tuple，里面保存了所有参数的默认值
+    2. 函数的`__kwdefaults__`属性保存keyword-only参数的默认值
+    3. `__code__`属性可以得到函数内变量
+       1. 得到的是一个对象，如果想要得到详细的变量名，要使用`obj.__code__.co_varnames`，会得到tuples，里面的元素是变量名，前N个是参数名，N可以通过2中方法得到
+       2. 使用`obj.__code__.co_argcount`得到参数的数量
+16. 15中的东西我们可以利用另一种方法更加清晰地得到：
+    1. 从`inspect`模块导入signature函数
+    2. `signature`函数会返回`inspect.Signature`对象
+    3. 对这个对象使用`str()`函数就可以得到包含参数的tuple
+    4. 对象的`parameters`属性会返回一个字典，元素为`(name, param)`
+    5. `param`对象可以通过`default`属性得到默认值
+    6. `param`对象还可以通过`kind`属性得到是位置参数还是keyword-only参数，有几种：
+       1. `POSITIONAL_OR_KEYWORD`
+       2. `VAR_POSITIONAL`：使用`*args`表示的
+       3. `VAR_KEYWORD`使用`**kwargs`表示的
+       4. `POSITIONAL_ONLY`
+    7. `Signature`对象还有`bind`方法，可以接受任意数量的参数，然后将他们绑定到参数里面，这经常在框架中被用于validate arguments prior to the actual function invocation，C++中也有一样的东西
+17. 函数注解
+    1. Python3可以为函数的参数和返回值添加注解
+    2. 如果有默认值，注释在两者中间：`def clip(text:str, max_len:'int > 0' =80) -> str`
+    3. 不会为了注解做什么处理，它们只是存储在`__annotations__`属性中，是一个dict，key为参数和返回值名字，value为它们的注释
+    4. 我们同样可以通过`inspect.Signature`对象来处理注解：
+       1. 它的`.return_annotation`属性
+       2. 它的`.parameters.values()`方法
+
+##### 函数变成的包
+
+1. `operator`模块
+   1. 里面有各种基本运算操作，比如说`operator.mul`，这是一个可调用的，可以用于`reduce`函数中代替自己写的`lambda`函数
+   2. 还有一组函数，用来遍历sequence，或者获取对象的属性：`sorted(one_list, key=itemgetter(1))`，这个就将这个list中对象的第一个部分作为排序的key
+      1. 这里我猜测机制是
+   3. 
 
 #### First-Class 函数的设计步骤
 
