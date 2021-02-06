@@ -582,14 +582,245 @@
 1. `operator`模块
    1. 里面有各种基本运算操作，比如说`operator.mul`，这是一个可调用的，可以用于`reduce`函数中代替自己写的`lambda`函数
    2. 还有一组函数，用来遍历sequence，或者获取对象的属性：`sorted(one_list, key=itemgetter(1))`，这个就将这个list中对象的第一个部分作为排序的key
-      1. 这里我猜测机制是
-   3. 
+      1. 还有`attrgetter`：`sorted(iterables, key=attrgetter('coord.lat'))`
+      2. 还有`methodcaller`：`sorted(iterables, key=methodcaller('upper'))`
+   3. 如果想要知道一个包内提供的函数，就可以对包的名字使用`dir`函数
+   
+2. functools模块提供的高阶函数
+
+   1. `reduce`：但是前面说了，可以被更好的函数`sum`所替代
+
+   2. `partial`，以及它的变种`partialmethod`：是现在这个包内最有用的函数了。
+
+      1. 可以接受一个函数，然后将其中的部分参数固定后再返回这个函数
+
+      2. 比如：
+
+         ```python
+         triple = functools.partial(mul, 3)
+         triple(7)
+         ```
+
+      3. 接受callables作为第一个参数，后面紧跟着任意多个位置和关键字参数
 
 #### First-Class 函数的设计步骤
 
+1. 
+
 #### 函数装饰器和终止
 
+1. 装饰器是一个把另一个函数作为参数的callable
 
+2. 装饰器严格来说只是语法糖，但是在做元编程的时候，装饰器的存在确实会让其非常方便
+
+3. 装饰器在被import时就会运行，我们把这个叫`import time`，而被装饰的函数在运行代码时才会运行，我们叫`runtime`
+
+4. 因为装饰器在`import time`的时候就会运行，所以非必要不要在装饰器中打印消息，因为这样的话，会在运行自己的代码前就打印出消息，而且如果import这个文件，也会打印出消息，这不是我们想要的
+
+5. variable scope的一个例子：
+
+   ```python
+   b = 6
+   def f2(a):
+       print(a)
+       print(b)
+       b = 9
+       
+   f2(3)
+   ```
+
+   1. 这个例子中，打印b时会报错
+   2. 看起来很奇怪，但其实是因为Python的编译问题：因为Python看到b在函数体内被赋值，所以觉得它是`local variable`，所以Python会尝试从local environment中取b。
+   3. 为了避免这种情况，可以在尝试使用全局变量的时候，在一开始用像`global b`这样的命令注明
+
+6. **Closures**
+
+   1. 定义：
+
+      1. a function
+      2. with an extended scope that encompass nonglobal variables referenced
+      3. in the body of the function
+      4. but not defined there
+
+   2. 示例
+
+      ```python
+      def make_averager():
+          series = []
+          
+          def averager(new_value):
+              series.append(new_value)
+              total = sum(series)
+              return total/len(series)
+          
+          return averager
+      ```
+
+   3. 其实就是定义一个工厂函数，返回一个可调用对象。而工厂函数中定义了一个局部变量，它返回的可调用对象操作那个局部变量
+
+   4. 其实到现在我还没有懂这样的必要，完全可以创建一个对象，然后使用这个对象的方法来操作就行了把？
+
+   5. 可以通过`__code__`属性来查看返回的可调用对象的变量
+
+      1. `.__code__.co_varnames`属性是可调用对象的参数和局部变量
+      2. `.__code__.co_freevars`属性是其可以操作的那个变量
+
+   6. 还可以通过`__closure__`属性来访问返回的对象操作的那个变量
+
+      1. 直接使用`.__closure__`返回那个对象
+      2. 可以使用`.__closure__[0].cell_contents`来得到变量中的值
+
+7. `nonlocal`声明
+
+   1. 前面闭包的那个示例不够高效，因为我们只想知道平均值，没必要存储整个序列，所以可以改成这样：
+
+      ```python
+      def make_averager():
+          count = 0
+          total = 0
+          
+          def averager(new_value):
+              count += 1
+              total += new_value
+              return total/count
+          
+          return averager
+      ```
+
+   2. 但是这样执行后会报错，因为我们前面5中提到的那个原因，count与total的+=操作会让Python认为它们是局部变量，所以会尝试从局部变量中寻找，从而报错
+
+   3. 但是我们不能使用5中的解决方法，即使用`global`，因为这些变量同样也是函数中的
+
+   4. 这是我们就可以使用`nonlocal`声明，在`averager`函数中，首先使用`nonlocal count, total`语句
+
+##### 写一个简单的装饰器
+
+1. 因为装饰器是在`import time`执行的，所以：
+
+   ```python
+   @clock
+   def factorial(n):
+       return 1 if n < 2 else n*factorial(n-1)
+   
+   //实际上是这样的
+   def factorial(n):
+       return 1 if n < 2 else n*factorial(n-1)
+   factorial = clock(factorial)
+   ```
+
+2. 1中的装饰器带来了一些问题：
+
+   1. 不支持关键词参数
+
+   2. 覆盖了原函数的`__name__和__doc__`属性
+
+   3. 可以使用`functools.wraps`这个修饰器来改进
+
+      1. 这样包裹住之后，就可以得到这个函数的相关信息了，这样就可以在下面进行修改
+
+      ```python
+      import functools
+      
+      def clock(func):
+          @functools.wraps(func)
+          def clocked(*args, **kwargs):
+              t0 = time.time()
+              result = func(*args, **kwargs)
+              elapsed = time.time() - t0
+              name = func.__name__
+              arg_lst = []
+              if arg:
+                  arg_lst.append(','.join(repr(arg) for arg in args))
+              if kwargs:
+                  pairs = ['%s=%r' % (k, w) for k, w in sorted(kwargs.items())]
+                  arg_lst.append(','.join(pairs))
+              arg_str = ','.join(arg_lst)
+              print()
+              return result
+          return clocked
+      ```
+
+##### 标准库中的装饰器
+
+1. Python有3个内置的函数用来装饰方法：
+
+   1. `property`
+   2. `classmethod`
+   3. `staticmethod`
+
+2. 还有一个常用的是`functools.wrap(func)`，用来帮助建造好用的装饰器
+
+3. 标准库`functools`中还有2个又去的装饰器，分别是：
+
+   1. `lru_cache`
+
+      1. 存储前面调用的结果，避免重复运算那些用过的参数
+
+      2. `lru`表示least recently used
+
+      3. 缓存是有限的，随着存储数量的增加，会丢弃掉以前不用的
+
+      4. 示例，用这个来解决迭代的重复计算问题：
+
+         ```python
+         import functools
+         
+         @functools.lru_cache()
+         def fibonacci(n):
+             if n < 2:
+                 return n
+             return fibonacci(n-2) + fibonacci(n-1)
+         
+         fibonacci(6)
+         ```
+
+      5. 完整的签名：`functools.lru_cache(maxsize=128, typed=False)`
+
+         1. 为了优化考虑，`maxsize`应该设为2的n次方
+         2. 如果`typed`设为True，那么会让那些不同类型的值直接判定为不一样，比如`1 != 1.0`，如果是False，那就可以知道他们一样
+
+      6. 它用`dict`来存储结果，它的key由位置和关键词参数组成，所以必须是hashable的
+
+   2. `singledispathch`
+
+      1. 是用来解决Python中没有重载函数的问题的
+
+      2. 使用这个装饰器之后，函数会变成`generic function`，也就是一组函数以不同的方式完成相同的操作，取决与第一个参数
+
+      3. 使用示例：
+
+         ```python
+         from functools import singledispatch
+         from collections import abc
+         import html
+         import number
+         
+         @singledispatch	            //用来标记base function
+         def htmlize(obj):          
+             content = html.escape(repr(obj))
+             return '<pre>{}</pre>'.format(content)
+         
+         @htmlize.register(str)     //用来注册其他类型
+         def _(text):              //因为这个名字无关紧要，所以使用'_'作函数名是最好的
+             content = html.escape(text).replace('\n', '<br>\n')
+             return '<p>{0}</p>'.format(content)
+         
+         @htmlize.register(numbers.Integral)
+         def _(n):
+             return '<pre>{0} (0x{0:x})</pre>'.format(n)
+         
+         @htmlize.register(tuple)
+         @htmlize.register(abc.MutableSequence)
+         def _(seq):
+             inner = '</li>\n<li>'.join(htmlize(item) for item in seq)
+             return '<ul>\n<li>' + inner + '</li>\n</ul>'
+         ```
+
+      4. 使用`abc`来表示类可以让我们想要的类更加多
+
+##### Parameterized 装饰器
+
+1. 通过写一个装饰器工厂（返回装饰器的函数），来接受其他参数。因为装饰器本身是只能接受被装饰的函数名这一个参数的
 
 
 
@@ -599,9 +830,289 @@
 
 #### Object References, Mutability, Recycling
 
+##### 变量不是盒子
+
+1. 变量是标签，而不是盒子
+2. 对于reference object，说变量被赋值给对象才会更合理一些，因为对象比赋值操作来的更早
+
+##### Idnetity, Equality and Aliases
+
+1. 区分`==`和`is`
+   1. `==`只是看值相不相等
+   2. `is`则是看两个对象是不是同一个
+2. 当比较变量和singleton，最好使用`is`，因为它操作起来更快，因为他不会被重载
+   1. `==`实际上是使用`a.__eq__(b)`的语法糖
+   2. 而`is`可以直接比较它们的id，执行更快
+3. 数组的相对不可变性
+   1. 数组的不可变指的是数组中的元素，但是如果元素是reference的话，这个reference指向的数据是可以改变的
+   2. `t1 = (1, 2, [30, 40])`
+   3. 但是我们不能调用`t1[0] = 10`，因为数组的元素不可变
+   4. 但是我们可以调用`t1[-1].append(50)`，因为list元素存储的只是reference
+
+##### Copies are shallow by default
+
+1. 常见的2种拷贝方法都是浅拷贝
+
+   1. `l2 = list(l1)`即使用建造函数
+   2. `l2 = l1[:]`
+
+2. 要注意上面两种拷贝和直接使用赋值的区别：
+
+   ```python
+   l1 = [1, 2, (3, 4), [5, 6]]
+   l2 = l1
+   l3 = l1[:]
+   ```
+
+   1. 在`l1[2].append(7)`语句之后，l2和l3都会变成`[1, 2, (3, 4), [5, 6, 7]]`
+   2. 但是在`l1[0] = 10`语句之后，l3不会变，而l2则会变得和l1一模一样
+   3. 上面的原因在于：
+      1. 1中的2中虽然是浅拷贝，但是实际上将l1中的所有元素都拷贝了一遍，如图所示（图中l2就是上面的l3）![fluentpy6](/home/lzh/Pictures/fluentpy6.png)
+      2. 所以浅拷贝之后，原list改变普通元素不会改变拷贝得到的l3，只有改变了元素指向的list，拷贝后的l3才会跟着改变，因为它们的第3个元素都指向同一个底层数据![](/home/lzh/Pictures/fluentpy6.png
+      3. 而l2这种其实并不能叫拷贝，而是为原list取了一个别名，任何时刻与原list都是一模一样的
+
+3. `copy`模块提供了：
+
+   1. `copy()`函数提供浅拷贝
+   2. `deepcopy()`函数提供深拷贝
+
+##### Function Parameters as References
+
+1. Python的参数传递策略
+
+   1. 当类型为`int`等的时候，拷贝值传递，也就是函数内的改动不会影响到函数的参数变量
+   2. 当类型为`list`等的时候，拷贝ref传递，函数内会影响到函数外
+
+2. 应当避免mutable object as a default values for parameters
+
+   1. 示例：
+
+      ```python
+      class HauntedBus:
+          """A bus model haunted by ghost passengers"""
+          def __init__(self, passengers=[]):
+              self.passengers = passengers
+          def pick(self, name):
+              self.passengers.append(name)
+          def drop(self, name):
+              self.passengers.remove(name)
+      ```
+
+   2. 这个对象的passengers使用了默认值，我们看到下面的应用就出现了问题：
+
+      ```python
+      >>> bus2 = HauntedBus()
+      >>> bus2.pick('Carrie')
+      >>> bus2.passengers
+      ['Carrie']
+      >>> bus3 = HauntedBus()
+      >>> bus3.passengers
+      ['Carrie']
+      >>> bus3.pick('Dave')
+      >>> bus2.passengers
+      ['Carrie', 'Dave']
+      >>> bus2.passengers is bus3.passengers
+      True
+      >>> bus1.passengers
+      ['Bill', 'Charlie']
+      ```
+
+   3. 归根结底，就是默认值的那个空list，它对于所有的调用的对象都是一样的：
+
+      1. 在初始化函数中加上一行代码，打印出空list的id：`print(id(passengers))`
+
+      ```python
+      >>> bus2 = HauntedBus()
+      139798537870464
+      >>> bus2.pick('Carrie')
+      >>> bus2.passengers
+      ['Carrie']
+      >>> bus3 = HauntedBus()
+      139798537870464
+      >>> bus3.passengers
+      ['Carrie']
+      >>> bus3.pick('Dave')
+      >>> bus2.passengers
+      ['Carrie', 'Dave']
+      >>> bus2.passengers is bus3.passengers
+      True
+      >>> bus1.passengers
+      ['Bill', 'Charlie']
+      ```
+
+   4. 为了应对这种情况，一般会将默认值设为`None`，然后再在接下来的代码里面进行修改
+
+3. 有时我们不希望函数改变传入的参数，这时，我们就需要进行`copy`
+
+   1. 对于`iterable`，可以直接使用`list(iterable)`，这样既可以用构造函数复制，又可以扩大参数的范围，因为`list`可以接受所有的iterable
+
+4. `del`和垃圾收集
+
+   1. `del`只是删除名字，而不是对象。
+   2. 它有可能会造成对象被删除，但是这是间接导致的，因为名字被删除，其指向的对象引用数归零时，被自动清除了
+   3. `__del__`特殊方法在对象要被摧毁的时候被调用，用来释放外部的资源
+      1. 我们不应该在自己的代码里面使用这个特殊代码
+   4. 在CPython中，最初的垃圾回收算法是计算ref
+   5. 后来在CPython2.0中，使用了新的算法
+
+##### 弱引用
+
+1. 弱引用不增加对象的引用计数
+
+2. 被引用所指向的对象叫做`referent`
+
+3. 弱引用在缓存中很有用
+
+4. 当我们想要细微地管理存储的时候，经常被隐式的赋值所影响，比如
+
+   1. _ console variable
+
+      1. 就是在console中被打印出来的那个变量，比如下面的例子：
+
+         ```python
+         >>> import weakref
+         >>> a_set = {0, 1}
+         >>> wref = weakref.ref(a_set)
+         >>> wref
+         <weakref at 0x100637598; to 'set' at 0x100636748>
+         >>> wref()
+         {0, 1}
+         >>> a_set = {2, 3, 4}
+         >>> wref()
+         {0, 1}
+         >>> wref() is None
+         False
+         >>> wref() is None
+         True
+         ```
+
+      2. 这里在`wref() is None`这个语句之后，`{0, 1}`这个对象就被回收了，因为这时console的`_`变量指向的是False，而不再是`{0, 1}`
+
+   2. Traceback objects
+
+5. `WeakValueDictionary`
+
+   1. 是一个mutable mapping
+
+   2. values是weak references to objects
+
+   3. 当指向的对象被回收了，含有弱引用的那一项也会被自动删除
+
+   4. 经常在caching中被应用
+
+   5. 下面是使用方法和一个不能忽视的错误
+
+      ```python
+      >>> import weakref
+      >>> stock = weakref.WeakValueDictionary()
+      >>> catalog = [Cheese('Red Leicester'), Cheese('Tilsit'),
+      ...
+      Cheese('Brie'), Cheese('Parmesan')]
+      ...
+      >>> for cheese in catalog:
+      ...
+      stock[cheese.kind] = cheese
+      ...
+      >>> sorted(stock.keys())
+      ['Brie', 'Parmesan', 'Red Leicester', 'Tilsit']
+      >>> del catalog
+      >>> sorted(stock.keys())
+      ['Parmesan']
+      >>> del cheese
+      >>> sorted(stock.keys())
+      []
+      ```
+
+      1. 这里之所以在删除`catalog`后，弱引用并没有全部删除干净，是因为在Python中，for产生的cheese这个是全局变量，所以在删除`catalog`后，仍然还有`cheese`指向最后一个元素，也就是`Parmesan`，这也是为什么最后只剩他
+      2. 要特别小心这种临时变量，很可能带来意想不到的后果
+
+6. `weakref`模块还能提供`WeakKeyDictionary`和`WeakSet`
+
+7. 如果想要建造一个知道所有其实例的类，可以使用`WeakSet`，因为如果使用正常的set，会造成实例无法被正常回收
+
+8. 弱引用的限制
+
+   1.  不能指向`list`和`dict`
+   2. 但是可以用一个类将1中的包装起来，就可以指向了
+   3. 可以直接指向用户定义的类
+   4. 但是对于`int`和`tuple`实例，就算是用类包含了也不能指向
+   5. 这些限制都是针对CPython的，是内部优化的结果
+
+9. Python对于Immutables的一些小tricks
+
+   1. 对于`tuple`，就是算是构造函数和`t[:]`，也是指向相同的底层数据，而不是进行复制
+   2. 这样的现象对于`str, bytes, frozenset`这些immutables都是一样的（`fs[:]`对于frozenset不管用）
+   3. sharing of string literals是一种优化技术，叫做`interning`。
+   4. 3中的技术，CPython在int上也会做来避免非必要的重复那些常见的数字
+   5. 所以对于`str和int`，多使用`==`而不是`is`，因为上面所讲的原因
+
 #### Pythonic的对象
 
+##### Object Representations
+
+1. Python使用鸭子类型，就是不需要继承，只需要定义要求的那些方法就行了
+2. 对象有两种表示方法：
+   1. `repr()`：对应着特殊方法`__repr__`，展示开发者想看到的东西
+   2. `str()`：对应着特殊方法`__str__`，展示用户想看到的东西
+3. 还有两个特殊方法提供表示对象的选择
+   1. `__bytes__`：与str类似，被`bytes()`函数调用，得到byte sequence
+   2. `__format__`：内置的函数`format()`和`str.format()`都会调用它
+4. 两种方法的装饰器
+   1. `@classmethod`：在类上操作，而不是在类的实例上操作
+      1. 所以传入的第一个参数是`cls`而不是`self`
+      2. 主要使用场景是alternative constructors
+   2. `@staticmethod`：让方法表现得像函数一样，可以在类和类的实例上都使用
+      1. 不接受`cls`或者`self`
+      2. 如果不想让方法和类产生交集，只是想把它定义在这个模块里，就可以使用这个
+5. `format`函数
+   1. 第一个参数是要规范化的对象
+   2. 第二个参数是要规范化到的目标：`format(0.41514534, '0.4f')`
+6. 如果没有定义`__format__`，就会使用`__str__`，但是这样就不能使用format specifier了
+7. 定义`_format__`
+   1. 示例：
+   2. 第二个参数就是format specifier
+   3. 可以使用string内置类型的format函数，可以更加简单地定义
+
+##### Private and protected attributes
+
+1. Python中并没有Java那种声明符，而只是简单的机制防止不小心重写了对象的属性
+2. Python中所谓的`private`属性其实就是以两个下划线开头的属性名
+3. Python会自动将以两个下划线开始的属性名字做处理：在前面加上一个下划线和类的名字：`__mood`会变成`_Dog__mood`
+4. 以一个下划线开头的是`protected`属性，它对于Python解释器来说没有特别的含义。但是对于Python的程序员，我们知道不应该从外部访问以一个下划线开头的protected属性
+
+##### 用`__slots__`属性来节省空间
+
+1. Python一般将实例的属性存在实例的`__dict__`属性中
+2. 这个属性是个dict，为了快速访问，使用了哈希表，所以也造成了很大的空间使用
+3. 如果你的应用中有上百万个实例，使用这种方式来存储属性就有点问题了，这是可以使用`__slots__`属性来节省存储，感觉`namedtuple`比class节省内存也是因为这个
+4. 原理是让Python将实例的属性存储为tuple而不是dict
+5. 定义`__slots__`
+   1. 首先创造这个属性
+   2. 然后给他赋值an iterable of string with identifiers for the instance attributes
+   3. 最好使用tuples，这样后面就不能改变了
+6. 当处理非常多个实例的数值数据的时候，最好使用`numpy.ndarray`，这是优化非常好的
+7. 不要在slots属性中存入dict属性，这样的话等于没做
+8. `__weakref__`属性对于那些支持弱引用的对象来说是必须的
+9. 如果既想要使用弱引用，有想要节省内存，可以将weakref存入到slots中
+10. slots属性的问题
+    1. 在每个子类中都必须重新声明`__slots__`，因为前面提到了，这个属性是不会继承的
+    2. 实例中只会存储定义在slots中的属性，这也是为什么使用了slots可以节省空间：
+       1. 只要不在slots中加入dict属性
+       2. 实例中就不会有dict属性
+       3. 这样的话，就可以节省很多空间
+    3. 实例没法被弱引用指向，除非将`__weakref__`属性包含在slots属性中
+
+##### 重载类的属性
+
+1. 如果想要改类的属性，可以直接改，但是这样会影响到所有没有自己属性的实例
+
 #### 序列Hacking, Hashing和切片
+
+1. 
+
+##### Vector Take#1: Vector2d compatible
+
+1. 
 
 #### 接口：从协议到ABCs
 
