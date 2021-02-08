@@ -1108,13 +1108,81 @@
 
 #### 序列Hacking, Hashing和切片
 
-1. 
+1. `reprlib.repr()`：这个函数可以输出安全的string，即当参数长度太大，可以省略后面部分
 
-##### Vector Take#1: Vector2d compatible
+2. 可以使用`@property`装饰器来让属性只读：
 
-1. 
+   1. 其实就是将x定义为一个方法
+   2. 将属性x加上下划线，这样就可以防止直接访问
+
+   ```python
+   class Vector 2d:
+       typecode = 'd'
+       
+       def __init__(self, x, y):
+           self.__x = float(x)
+           self.__y = float(y)
+           
+       @property
+       def x(self):
+           return self.__x
+   ```
+
+3. 可以通过`cls.shortcut_names`属性来实现：
+
+   ```python
+   shortcut_names = 'xyzt'
+   
+   def __getattr__(self, name):
+       cls = type(self)
+       if len(name) == 1:
+           pos = cls.shortcut_names.find(name)
+           if 0<=pos< len(self._components):
+               return self._components[pos]
+       raise AttriteError()
+   ```
+
+4. 需要设置好`__setattr__`方法
+
+   1. 因为如果没有设置好，可以通过`instance.property = value`来对属性进行更改，且不会报错
+
+   2. 如何设置：
+
+      ```python
+      def __setattr__(self, name, value):
+          cls = type(self)
+          if len(name) == 1:
+              if name in cls.shortcut_names:
+                  error = 'read only attribute'
+              elif name.islower():
+                  error = 'can\'t set attributes from a to z'
+              else:
+                  error = ''
+              if error:
+                  raise AttritebuteError()
+          super().__setattr__(name, value)
+      ```
+
+5. `itertools.zip_longest`可以zip很多个item，且可以接受`fillvalue`参数，这样就会自动用这个来代替缺失值
 
 #### 接口：从协议到ABCs
+
+##### Python中的接口和协议
+
+1. 不推荐定义新的ABCs，过度定义的风险是很大的
+
+2. 可以通过在类外定义函数，然后将函数名传入来在类外设置方法
+
+   ```python
+   def set_card(deck, position, card):
+       deck._cards[position] = card
+   
+   RenchDeck.__setitem__ = set_card
+   ```
+
+3. 不应该过度使用`isinstance`
+
+4. 
 
 #### 继承
 
